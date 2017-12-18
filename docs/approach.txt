@@ -1,0 +1,63 @@
+
+Objective:
+1. Lower cost 
+2. Less operational headache 
+3. Performance
+4. High availability
+
+One answer: using serverless
+
+
+Requiremnts for batch procesing:
+1. Move (cut/paste) file efficiently within S3.
+	- Use EMR's s3-dist-cp to copy large amount of files parallelly. So launch EMR at the begining of the batch process.
+
+2. EMR: Launch, Spot & On Demand, Resize, Terminate.
+	- Use AWS API Call to start, terminate & resize
+    - Use fleet InstanceFleets, it will be flexible to resize the cluster	
+	
+3. Hive/Spark jobs:
+	- Use EMR Steps 
+	
+4. Common Metastore to share between different services (hive, spark, Athena etc.)
+    - AWS Glue
+	
+5. Fast SQL interface to query data on S3.
+    - AWS Athena
+	
+6. Monitoring jobs state
+    - Contineously monitor status of submitted job using AWS API call
+	
+7. Status notification
+	- SNS
+	- create SNS topics 
+	- from our code, we need to send messgae only to the topic
+	- All who subscribed to the topic will get messgae
+
+8. Orchestration and Workflow  
+	- AWS Step function/State Machine
+	- AWS Lambda called from Step Sunctions
+	
+9. Moduler
+	- Split steps in smaller independent modules
+	- Create state machines for each of the individual modules. So that we can run manually if any of them fails
+    - orchestrate all state machine modules from another state machine	
+
+10.Schedule & log
+	- Use AWS Cloudwatch to schedule step function
+	
+11.Reusable and easy to understand code
+    - Use python
+    - boto3 library
+    - Create general purpose lambda function and reuse it by changing event/environment variables
+	
+12. Security
+    - Use least privileged IAM Roles to execute services (Step Functions & Lambda)
+	- Isolate using VPC (even S3 access policy strict to VPC)
+	- Provide role based access on S3 data to users/groups based of least privileged
+	
+
+
+	
+
+

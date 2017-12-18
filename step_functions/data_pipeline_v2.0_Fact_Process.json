@@ -1,0 +1,181 @@
+{
+  "Comment": "State Machine to Procvess Facts",
+  "StartAt": "Get EMR ClusterId",
+  "States": {
+    "Get EMR ClusterId": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_read_state_info_from_s3:data_pipeline",
+      "OutputPath": "$",
+      "Next": "CMD Fact Stage Move"
+    },
+    "CMD Fact Stage Move": {
+      "Type": "Pass", 
+      "OutputPath": "$",
+      "Result": {"Step_Name": "Move Fact Files from Landing to Staging", "Cmd_Run": "s3-dist-cp --src s3://workarea-<aws_region>/data-workflows/landing/DWH/facts/sample_country_tx_fact --dest s3://workarea-<aws_region>/data-workflows/stage/STG_DWH/stg_fact_db/sample_country_tx_fact --deleteOnSuccess"},
+      "ResultPath": "$.NextStepNameAndCmd",
+      "Next": "Fact Stage Move"
+    },
+    "Fact Stage Move": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Fact Stage Move"
+    },
+    "Wait Fact Stage Move": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Fact Stage Move Status"
+    },
+    "Get Fact Stage Move Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Fact Stage Moved?",
+      "OutputPath": "$"
+    },
+    "Fact Stage Moved?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Fact Stage Move Failed Message"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "CMD Fact Load"
+        }
+      ],
+      "Default": "Wait Fact Stage Move"
+    },
+    "Fact Stage Move Failed Message": {
+      "Type": "Pass",
+      "Result":  "Fact Stage Move Failed! describe_step returned FAILED|CANCELLED",
+      "ResultPath": "$.Message",
+      "Next": "Send Process Fact Fail Message"
+    },
+    "CMD Fact Load":{
+      "Type": "Pass", 
+      "OutputPath": "$",
+      "Result": {"Step_Name": "Hive Load Fact Table from Staging Files", "Cmd_Run": "hive -v -f s3://workarea-<aws_region>/data-workflows/prod/libs/hive-scripts/fact_process.sql"},
+      "ResultPath": "$.NextStepNameAndCmd",
+      "Next": "Fact Load"
+    },
+    "Fact Load": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Fact Load"
+    },
+    "Wait Fact Load": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Fact Load Status"
+    },
+    "Get Fact Load Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Fact Loaded?",
+      "OutputPath": "$"
+    },
+    "Fact Loaded?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Fact Load Failed Message"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "CMD Fact Archive"
+        }
+      ],
+      "Default": "Wait Fact Load"
+    },
+    "Fact Load Failed Message": {
+      "Type": "Pass",
+      "Result":  "Fact Load Failed! describe_step returned FAILED|CANCELLED",
+      "ResultPath": "$.Message",
+      "Next": "Send Process Fact Fail Message"
+    },
+    "CMD Fact Archive":{
+      "Type": "Pass", 
+      "OutputPath": "$",
+      "Result": {"Step_Name": "Archive Fact Files from Staging", "Cmd_Run": "s3-dist-cp --src s3://workarea-<aws_region>/data-workflows/stage/STG_DWH/stg_fact_db/sample_country_tx_fact --dest s3://workarea-<aws_region>/data-workflows/archive/DWH/facts/sample_country_tx_fact --deleteOnSuccess"},
+      "ResultPath": "$.NextStepNameAndCmd",
+      "Next": "Fact Archive"
+    },
+    "Fact Archive": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Fact Archive"
+    },
+    "Wait Fact Archive": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Fact Archive Status"
+    },
+    "Get Fact Archive Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Fact Archived?",
+      "OutputPath": "$"
+    },
+    "Fact Archived?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Fact Archive Failed Message"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Fact Process Success"
+        }
+      ],
+      "Default": "Wait Fact Archive"
+    },
+    "Fact Archive Failed Message": {
+      "Type": "Pass",
+      "Result":  "Fact Archive Failed! describe_step returned FAILED|CANCELLED",
+      "ResultPath": "$.Message",
+      "Next": "Send Process Fact Fail Message"
+    },
+    "Send Process Fact Fail Message": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_send_msg_sns:data_pipeline",
+      "OutputPath": "$",
+      "Next": "ARN Terminate EMR Cluster Steps"
+    },
+    "ARN Terminate EMR Cluster Steps": {
+      "Type": "Pass",
+      "OutputPath": "$",
+      "Result": "arn:aws:states:<aws_region>:<aws_accountid>:stateMachine:data_pipeline_v2.0_Terminate_EMR_Cluster",
+      "ResultPath": "$.nextStateMachineArn",
+      "Next": "Terminate EMR Cluster Steps"
+    },
+    "Terminate EMR Cluster Steps": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Process Fact Failed"
+    },  
+    "Process Fact Failed": {
+      "Type": "Fail",
+      "Cause": "Process Fact Failed",
+      "Error": "One of the step  in Process Fact state machine failed"
+    },
+    "Fact Process Success": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "Comment": "State Machine to add additional workers to an existing EMR cluster",
+  "StartAt": "Get EMR ClusterId",
+  "States": {
+    "Get EMR ClusterId": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_read_state_info_from_s3:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Add EMR Workers"
+    },
+    "Add EMR Workers": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_add_worker_instances_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Add EMR Workers"
+    },
+    "Wait Add EMR Workers": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Add EMR Workers Status"
+    },
+    "Get Add EMR Workers Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_add_worker_instances_emr:data_pipeline",
+      "Next": "EMR Workers Added?",
+      "OutputPath": "$"
+    },
+    "EMR Workers Added?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Add EMR Workers Failed Message"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Add EMR Workers Success"
+        }
+      ],
+      "Default": "Wait Add EMR Workers"
+    },
+    "Add EMR Workers Failed Message": {
+      "Type": "Pass",
+      "Result":  "Add EMR Workers Failed! Number of instances RUNNING|PROVISIONING|BOOTSTRAPPING|AWAITING_FULFILLMENT less than target",
+      "ResultPath": "$.Message",
+      "Next": "Send Add EMR Workers Fail Message"
+    },  
+    "Send Add EMR Workers Fail Message": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_send_msg_sns:data_pipeline",
+      "OutputPath": "$",
+      "Next": "ARN Terminate EMR Cluster Steps"
+    },
+    "ARN Terminate EMR Cluster Steps": {
+      "Type": "Pass",
+      "OutputPath": "$",
+      "Result": "arn:aws:states:<aws_region>:<aws_accountid>:stateMachine:data_pipeline_v2.0_Terminate_EMR_Cluster",
+      "ResultPath": "$.nextStateMachineArn",
+      "Next": "Terminate EMR Cluster Steps"
+    },
+    "Terminate EMR Cluster Steps": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Add EMR Workers Failed"
+    },  
+    "Add EMR Workers Failed": {
+      "Type": "Fail",
+      "Cause": "Add EMR Workers Failed",
+      "Error": "Number of instances RUNNING|PROVISIONING|BOOTSTRAPPING|AWAITING_FULFILLMENT less than target"
+    },
+    "Add EMR Workers Success": {
+      "Type": "Pass",
+      "End": true
+    }    
+    
+  }
+}

@@ -1,0 +1,39 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "states:DescribeStateMachineForExecution",
+                "states:DescribeActivity",
+                "states:DescribeStateMachine",
+                "states:DescribeExecution",
+                "states:ListExecutions",
+                "states:GetExecutionHistory",
+                "states:StartExecution",
+                "states:GetActivityTask"
+            ],
+            "Resource": [
+                "arn:aws:states:*:*:activity:*",
+                "arn:aws:states:*:*:execution:*:*",
+                "arn:aws:states:*:*:statemachine:*"
+            ]
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+                "states:SendTaskSuccess",
+                "states:ListStateMachines",
+                "states:SendTaskFailure",
+                "states:ListActivities",
+                "lambda:InvokeFunction",
+                "states:StopExecution",
+                "lambda:Invoke",
+                "states:SendTaskHeartbeat"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

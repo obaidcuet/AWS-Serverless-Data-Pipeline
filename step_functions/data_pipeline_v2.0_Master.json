@@ -1,0 +1,287 @@
+{
+  "Comment": "State mechine to orchestrate Step Machines related to data_pipeline",
+  "StartAt": "Current Step Function",
+  "States": {
+    "Current Step Function": {
+      "Type": "Pass",
+      "OutputPath": "$",
+      "Result": "data_pipeline_v2.0_Master",
+      "ResultPath": "$.currentStepName",
+      "Next": "Get Running Step Functions"      
+    },
+    "Get Running Step Functions":{
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_check_duplicate_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Step Function Duplicate?"
+    },
+    "Step Function Duplicate?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "RUNNING",
+          "Next": "Step Function Already Running"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "NOTRUNNING",
+          "Next": "ARN Launch EMR Cluster Steps"
+        }
+      ]
+    },
+    "Step Function Already Running": {
+      "Type": "Fail",
+      "Cause": "Step Function Already Running",
+      "Error": "list_executions returned same Step Function name at running state"      
+    },
+    
+    
+    "ARN Launch EMR Cluster Steps": {
+      "Type": "Pass",
+      "OutputPath": "$",
+      "Result": "arn:aws:states:<aws_region>:<aws_accountid>:stateMachine:data_pipeline_v2.0_Launch_EMR_Cluster",
+      "ResultPath": "$.nextStateMachineArn",
+      "Next": "Launch EMR Cluster Steps"
+    },
+    "Launch EMR Cluster Steps": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Launch EMR Cluster Steps"
+    }, 
+    "Wait Launch EMR Cluster Steps": {
+      "Type": "Wait",
+      "Seconds": 300,
+      "OutputPath": "$",
+      "Next": "Get Launch EMR Cluster Steps Status"
+    },
+    "Get Launch EMR Cluster Steps Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_stepfunction:data_pipeline",
+      "Next": "Launch EMR Cluster Steps Completed?",
+      "OutputPath": "$"
+    },
+    "Launch EMR Cluster Steps Completed?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Launch EMR Cluster Steps Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "ARN Dimension Process Steps"
+        }
+      ],
+      "Default": "Wait Launch EMR Cluster Steps"
+    }, 
+    "Launch EMR Cluster Steps Failed": {
+      "Type": "Fail",
+      "Cause": "Launch EMR Cluster Steps Failed",
+      "Error": "describe_execution returned FAILED|TIMED_OUT|ABORTED"
+    },
+    
+    "ARN Dimension Process Steps": {
+      "Type": "Pass",
+      "OutputPath": "$",
+      "Result": "arn:aws:states:<aws_region>:<aws_accountid>:stateMachine:data_pipeline_v2.0_Dimension_Process",
+      "ResultPath": "$.nextStateMachineArn",
+      "Next": "Dimension Process Steps"
+    },
+    "Dimension Process Steps": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Dimension Process Steps"
+    }, 
+    "Wait Dimension Process Steps": {
+      "Type": "Wait",
+      "Seconds": 120,
+      "OutputPath": "$",
+      "Next": "Get Dimension Process Steps Status"
+    },
+    "Get Dimension Process Steps Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_stepfunction:data_pipeline",
+      "Next": "Dimension Process Steps Completed?",
+      "OutputPath": "$"
+    },
+    "Dimension Process Steps Completed?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Dimension Process Steps Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "ARN Add EMR Workers Steps"
+        }
+      ],
+      "Default": "Wait Dimension Process Steps"
+    }, 
+    "Dimension Process Steps Failed": {
+      "Type": "Fail",
+      "Cause": "Dimension Process Steps Failed",
+      "Error": "describe_execution returned FAILED|TIMED_OUT|ABORTED"
+    },    
+ 
+    "ARN Add EMR Workers Steps": {
+      "Type": "Pass",
+      "OutputPath": "$",
+      "Result": "arn:aws:states:<aws_region>:<aws_accountid>:stateMachine:data_pipeline_v2.0_Add_EMR_Workers_data",
+      "ResultPath": "$.nextStateMachineArn",
+      "Next": "Add EMR Workers Steps"
+    },
+    "Add EMR Workers Steps": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Add EMR Workers Steps"
+    }, 
+    "Wait Add EMR Workers Steps": {
+      "Type": "Wait",
+      "Seconds": 300,
+      "OutputPath": "$",
+      "Next": "Get Add EMR Workers Steps Status"
+    },
+    "Get Add EMR Workers Steps Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_stepfunction:data_pipeline",
+      "Next": "Add EMR Workers Steps Completed?",
+      "OutputPath": "$"
+    },
+    "Add EMR Workers Steps Completed?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Add EMR Workers Steps Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "ARN Fact Process Steps"
+        }
+      ],
+      "Default": "Wait Add EMR Workers Steps"
+    }, 
+    "Add EMR Workers Steps Failed": {
+      "Type": "Fail",
+      "Cause": "Add EMR Workers Steps Failed",
+      "Error": "describe_execution returned FAILED|TIMED_OUT|ABORTED"
+    }, 
+
+    "ARN Fact Process Steps": {
+      "Type": "Pass",
+      "OutputPath": "$",
+      "Result": "arn:aws:states:<aws_region>:<aws_accountid>:stateMachine:data_pipeline_v2.0_Fact_Process",
+      "ResultPath": "$.nextStateMachineArn",
+      "Next": "Fact Process Steps"
+    },
+    "Fact Process Steps": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Fact Process Steps"
+    }, 
+    "Wait Fact Process Steps": {
+      "Type": "Wait",
+      "Seconds": 120,
+      "OutputPath": "$",
+      "Next": "Get Fact Process Steps Status"
+    },
+    "Get Fact Process Steps Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_stepfunction:data_pipeline",
+      "Next": "Fact Process Steps Completed?",
+      "OutputPath": "$"
+    },
+    "Fact Process Steps Completed?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Fact Process Steps Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "ARN Terminate EMR Cluster Steps"
+        }
+      ],
+      "Default": "Wait Fact Process Steps"
+    }, 
+    "Fact Process Steps Failed": {
+      "Type": "Fail",
+      "Cause": "Fact Process Steps Failed",
+      "Error": "describe_execution returned FAILED|TIMED_OUT|ABORTED"
+    }, 
+
+    "ARN Terminate EMR Cluster Steps": {
+      "Type": "Pass",
+      "OutputPath": "$",
+      "Result": "arn:aws:states:<aws_region>:<aws_accountid>:stateMachine:data_pipeline_v2.0_Terminate_EMR_Cluster",
+      "ResultPath": "$.nextStateMachineArn",
+      "Next": "Terminate EMR Cluster Steps"
+    },
+    "Terminate EMR Cluster Steps": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Terminate EMR Cluster Steps"
+    }, 
+    "Wait Terminate EMR Cluster Steps": {
+      "Type": "Wait",
+      "Seconds": 180,
+      "OutputPath": "$",
+      "Next": "Get Terminate EMR Cluster Steps Status"
+    },
+    "Get Terminate EMR Cluster Steps Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_stepfunction:data_pipeline",
+      "Next": "Terminate EMR Cluster Steps Completed?",
+      "OutputPath": "$"
+    },
+    "Terminate EMR Cluster Steps Completed?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Terminate EMR Cluster Steps Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "All Steps Successful"
+        }
+      ],
+      "Default": "Wait Terminate EMR Cluster Steps"
+    }, 
+    "Terminate EMR Cluster Steps Failed": {
+      "Type": "Fail",
+      "Cause": "Terminate EMR Cluster Steps Failed",
+      "Error": "describe_execution returned FAILED|TIMED_OUT|ABORTED"
+    },
+    "All Steps Successful": {
+      "Type": "Pass",
+      "Result":  "All Step Successful",
+      "ResultPath": "$.Message",
+      "Next": "Send Message"
+    },   
+    "Send Message": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_send_msg_sns:data_pipeline",
+      "OutputPath": "$",
+      "End": true
+    }
+  }
+}

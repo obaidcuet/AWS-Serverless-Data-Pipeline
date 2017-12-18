@@ -1,0 +1,93 @@
+{
+  "Comment": "State Machine to launch EMR Cluster",
+  "StartAt": "Get Running EMRs",
+  "States": {
+    "Get Running EMRs":{
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_check_duplicate_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "EMR Duplicate?"
+    },
+    "EMR Duplicate?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "RUNNING",
+          "Next": "EMR Already Running"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "NOTRUNNING",
+          "Next": "Start EMR"
+        }
+      ]
+    },
+    "EMR Already Running": {
+      "Type": "Fail",
+      "Cause": "EMR Already Running",
+      "Error": "list_clusters returned same cluster name at running state"      
+    },
+    "Start EMR": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_launch_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait EMR Start"
+    },
+    "Wait EMR Start": {
+      "Type": "Wait",
+      "Seconds": 300,
+      "OutputPath": "$",
+      "Next": "Get EMR Status"
+    },
+    "Get EMR Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_emr:data_pipeline",
+      "Next": "EMR Started?",
+      "OutputPath": "$"
+    },
+    "EMR Started?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "STOPPED",
+          "Next": "EMR Failed Message"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "STARTED",
+          "Next": "Store ClusterId in S3"
+        }
+      ],
+      "Default": "Wait EMR Start"
+    },
+    "EMR Failed Message": {
+      "Type": "Pass",
+      "Result":  "Launch EMR Cluster Steps Failed!",
+      "ResultPath": "$.Message",
+      "Next": "Send EMR Fail Message"
+    },
+    "Send EMR Fail Message": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_send_msg_sns:data_pipeline",
+      "OutputPath": "$",
+      "Next": "EMR Failed"
+    },
+    "EMR Failed": {
+      "Type": "Fail",
+      "Cause": "EMR Failed to Start",
+      "Error": "describe_cluster returned TERMINATED|TREMINATING"
+    },
+    "Store ClusterId in S3": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_write_state_info_to_s3:data_pipeline",
+      "OutputPath": "$",
+      "Next": "EMR Started"   
+    },
+    "EMR Started": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

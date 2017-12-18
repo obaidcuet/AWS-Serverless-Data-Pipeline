@@ -1,0 +1,57 @@
+{
+  "Comment": "State mechine to orchestrate Step Machines related to data_pipeline ",
+  "StartAt": "Start Data Pipeline Steps",
+  "States": {
+    "Start Data Pipeline Steps": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Data Pipeline Steps"
+    },
+    "Wait Data Pipeline Steps": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Data Pipeline Steps Status"
+    },
+    "Get Data Pipeline Steps Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_stepfunction:data_pipeline",
+      "Next": "Data Pipeline Steps Completed?",
+      "OutputPath": "$"
+    },
+    "Data Pipeline Steps Completed?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Data Pipeline Steps Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Data Pipeline Steps Successful"
+        }
+      ],
+      "Default": "Wait Data Pipeline Steps"
+    },
+    "Data Pipeline Steps Failed": {
+      "Type": "Fail",
+      "Cause": "Data Pipeline Steps Failed",
+      "Error": "describe_execution returned FAILED|TIMED_OUT|ABORTED"
+    },
+    "Data Pipeline Steps Successful": {
+      "Type": "Pass",
+      "Result":  "Data Pipeline Steps Successful!",
+      "ResultPath": "$.Message",
+      "Next": "Send Message"
+    },   
+    "Send Message": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_send_msg_sns:data_pipeline",
+      "OutputPath": "$",
+      "End": true
+    }
+  }
+}

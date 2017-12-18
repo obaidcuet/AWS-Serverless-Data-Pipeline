@@ -1,0 +1,420 @@
+{
+  "Comment": "A state machine that starts EMR cluster and monitors the cluster until it starts. To Combine multiple state machines, we can create a steps machine that calls a lambda; that lambda in turn calls another step machine; inputs will flow as lambda events",
+  "StartAt": "Get Running Step Functions",
+  "States": {
+    "Get Running Step Functions":{
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_check_duplicate_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Step Function Duplicate?"
+    },
+    "Step Function Duplicate?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "RUNNING",
+          "Next": "Step Function Already Running"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "NOTRUNNING",
+          "Next": "Get Running EMRs"
+        }
+      ]
+    },
+    "Step Function Already Running": {
+      "Type": "Fail",
+      "Cause": "Step Function Already Running",
+      "Error": "list_executions returned same Step Function name at running state"      
+    },    
+    "Get Running EMRs":{
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_check_duplicate_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "EMR Duplicate?"
+    },
+    "EMR Duplicate?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "RUNNING",
+          "Next": "EMR Already Running"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "NOTRUNNING",
+          "Next": "Start EMR"
+        }
+      ]
+    },
+    "EMR Already Running": {
+      "Type": "Fail",
+      "Cause": "EMR Already Running",
+      "Error": "list_clusters returned same cluster name at running state"      
+    },
+    "Start EMR": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_launch_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait EMR Start"
+    },
+    "Wait EMR Start": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get EMR Status"
+    },
+    "Get EMR Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_emr:data_pipeline",
+      "Next": "EMR Started?",
+      "OutputPath": "$"
+    },
+    "EMR Started?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "STOPPED",
+          "Next": "EMR Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "STARTED",
+          "Next": "Dim Stage Move"
+        }
+      ],
+      "Default": "Wait EMR Start"
+    },
+    "EMR Failed": {
+      "Type": "Fail",
+      "Cause": "EMR Failed to Start",
+      "Error": "describe_cluster returned TERMINATED|TREMINATING"
+    },
+    "Dim Stage Move": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:mv_dim_files_lnd_stg",
+      "OutputPath": "$",
+      "Next": "Wait Dim Stage Move"
+    },
+    "Wait Dim Stage Move": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Dim Stage Move Status"
+    },
+    "Get Dim Stage Move Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Dim Stage Moved?",
+      "OutputPath": "$"
+    },
+    "Dim Stage Moved?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Dim Stage Move Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Dim Load"
+        }
+      ],
+      "Default": "Wait Dim Stage Move"
+    },
+    "Dim Stage Move Failed": {
+      "Type": "Fail",
+      "Cause": "Dim Stage Move Failed",
+      "Error": "describe_step returned FAILED|CANCELLED"
+    },
+    "Dim Load": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:load_dim_hive",
+      "OutputPath": "$",
+      "Next": "Wait Dim Load"
+    },
+    "Wait Dim Load": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Dim Load Status"
+    },
+    "Get Dim Load Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Dim Loaded?",
+      "OutputPath": "$"
+    },
+    "Dim Loaded?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Dim Load Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Dim Archive"
+        }
+      ],
+      "Default": "Wait Dim Load"
+    },
+    "Dim Load Failed": {
+      "Type": "Fail",
+      "Cause": "Dim Load Failed",
+      "Error": "describe_step returned FAILED|CANCELLED"
+    },
+    "Dim Archive": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:arc_dim_files",
+      "OutputPath": "$",
+      "Next": "Wait Dim Archive"
+    },
+    "Wait Dim Archive": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Dim Archive Status"
+    },
+    "Get Dim Archive Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Dim Archived?",
+      "OutputPath": "$"
+    },
+    "Dim Archived?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Dim Archive Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Add EMR Workers"
+        }
+      ],
+      "Default": "Wait Dim Archive"
+    },
+    "Dim Archive Failed": {
+      "Type": "Fail",
+      "Cause": "Dim Archive Failed",
+      "Error": "describe_step returned FAILED|CANCELLED"
+    },
+    "Add EMR Workers": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_add_worker_instances_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Add EMR Workers"
+    },
+    "Wait Add EMR Workers": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Add EMR Workers Status"
+    },
+    "Get Add EMR Workers Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_add_worker_instances_emr:data_pipeline",
+      "Next": "EMR Workers Added?",
+      "OutputPath": "$"
+    },
+    "EMR Workers Added?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Add EMR Workers Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Fact Stage Move"
+        }
+      ],
+      "Default": "Wait Add EMR Workers"
+    },
+    "Add EMR Workers Failed": {
+      "Type": "Fail",
+      "Cause": "Add EMR Workers Failed",
+      "Error": "Number of instances RUNNING|PROVISIONING|BOOTSTRAPPING|AWAITING_FULFILLMENT less than target"
+    },
+    "Fact Stage Move": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:mv_fct_lnd_to_stg",
+      "OutputPath": "$",
+      "Next": "Wait Fact Stage Move"
+    },
+    "Wait Fact Stage Move": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Fact Stage Move Status"
+    },
+    "Get Fact Stage Move Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Fact Stage Moved?",
+      "OutputPath": "$"
+    },
+    "Fact Stage Moved?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Fact Stage Move Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Fact Load"
+        }
+      ],
+      "Default": "Wait Fact Stage Move"
+    },
+    "Fact Stage Move Failed": {
+      "Type": "Fail",
+      "Cause": "Fact Stage Move Failed",
+      "Error": "describe_step returned FAILED|CANCELLED"
+    },
+    "Fact Load": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:load_fact_hive",
+      "OutputPath": "$",
+      "Next": "Wait Fact Load"
+    },
+    "Wait Fact Load": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Fact Load Status"
+    },
+    "Get Fact Load Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Fact Loaded?",
+      "OutputPath": "$"
+    },
+    "Fact Loaded?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Fact Load Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Fact Archive"
+        }
+      ],
+      "Default": "Wait Fact Load"
+    },
+    "Fact Load Failed": {
+      "Type": "Fail",
+      "Cause": "Fact Load Failed",
+      "Error": "describe_step returned FAILED|CANCELLED"
+    },
+    "Fact Archive": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:arc_fact_files",
+      "OutputPath": "$",
+      "Next": "Wait Fact Archive"
+    },
+    "Wait Fact Archive": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Fact Archive Status"
+    },
+    "Get Fact Archive Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Fact Archived?",
+      "OutputPath": "$"
+    },
+    "Fact Archived?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Fact Archive Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Terminate EMR"
+        }
+      ],
+      "Default": "Wait Fact Archive"
+    },
+    "Fact Archive Failed": {
+      "Type": "Fail",
+      "Cause": "Fact Archive Failed",
+      "Error": "describe_step returned FAILED|CANCELLED"
+    },
+    "Terminate EMR": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_terminate_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Terminate EMR"
+    },
+    "Wait Terminate EMR": {
+      "Type": "Wait",
+      "Seconds": 120,
+      "OutputPath": "$",
+      "Next": "Get Terminate EMR Status"
+    },
+    "Get Terminate EMR Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_emr:data_pipeline",
+      "Next": "EMR Terminated?",
+      "OutputPath": "$"
+    },
+    "EMR Terminated?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "STARTED",
+          "Next": "Terminate EMR Failed"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "STOPPED",
+          "Next": "All Steps Successful"
+        }
+      ]
+    },
+    "Terminate EMR Failed": {
+      "Type": "Fail",
+      "Cause": "Terminate EMR Failed",
+      "Error": "EMR is not terminating after waiting 5 minutes"
+    },
+    "All Steps Successful": {
+      "Type": "Pass",
+      "Result":  "All Step Successful",
+      "ResultPath": "$.Message",
+      "Next": "Send Message"
+    },   
+    "Send Message": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_send_msg_sns:data_pipeline",
+      "OutputPath": "$",
+      "End": true
+    }
+  }
+}

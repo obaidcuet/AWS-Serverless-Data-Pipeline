@@ -1,0 +1,181 @@
+{
+  "Comment": "State Machine to Process Dimensions",
+  "StartAt": "Get EMR ClusterId",
+  "States": {
+    "Get EMR ClusterId": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_read_state_info_from_s3:data_pipeline",
+      "OutputPath": "$",
+      "Next": "CMD Dim Stage Move"
+    },
+    "CMD Dim Stage Move": {
+      "Type": "Pass",        
+      "OutputPath": "$",
+      "Result": {"Step_Name": "Move Dimension Files from Landing to Staging", "Cmd_Run": "s3-dist-cp --src s3://workarea-<aws_region>/data-workflows/landing/DWH/dimensions/sample_country_dim --dest s3://workarea-<aws_region>/data-workflows/stage/STG_DWH/stg_dimension_db/sample_country_dim --deleteOnSuccess"},
+      "ResultPath": "$.NextStepNameAndCmd",
+      "Next": "Dim Stage Move"
+    },
+    "Dim Stage Move": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Dim Stage Move"
+    },
+    "Wait Dim Stage Move": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Dim Stage Move Status"
+    },
+    "Get Dim Stage Move Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Dim Stage Moved?",
+      "OutputPath": "$"
+    },
+    "Dim Stage Moved?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Dim Stage Move Failed Message"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "CMD Dim Load"
+        }
+      ],
+      "Default": "Wait Dim Stage Move"
+    },
+    "Dim Stage Move Failed Message": {
+      "Type": "Pass",
+      "Result":  "Dim Stage Move Failed! describe_step returned FAILED|CANCELLED",
+      "ResultPath": "$.Message",
+      "Next": "Send Process Dimension Fail Message"
+    },
+    "CMD Dim Load":{
+      "Type": "Pass",       
+      "OutputPath": "$",
+      "Result": {"Step_Name": "Hive Load Dimension Table from Staging Files", "Cmd_Run": "hive -v -f s3://workarea-<aws_region>/data-workflows/prod/libs/hive-scripts/diemnsion_process.sql"},
+      "ResultPath": "$.NextStepNameAndCmd",
+      "Next": "Dim Load"
+    },
+    "Dim Load": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Dim Load"
+    },
+    "Wait Dim Load": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Dim Load Status"
+    },
+    "Get Dim Load Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Dim Loaded?",
+      "OutputPath": "$"
+    },
+    "Dim Loaded?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Dim Load Failed Message"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "CMD Dim Archive"
+        }
+      ],
+      "Default": "Wait Dim Load"
+    },
+    "Dim Load Failed Message": {
+      "Type": "Pass",
+      "Result":  "Dim Load Failed! describe_step returned FAILED|CANCELLED",
+      "ResultPath": "$.Message",
+      "Next": "Send Process Dimension Fail Message"
+    },
+    "CMD Dim Archive": {
+      "Type": "Pass", 
+      "OutputPath": "$",
+      "Result": {"Step_Name": "Archive Dimension Files from Staging", "Cmd_Run": "s3-dist-cp --src s3://workarea-<aws_region>/data-workflows/stage/STG_DWH/stg_dimension_db/sample_country_dim --dest s3://workarea-<aws_region>/data-workflows/archive/DWH/dimensions/sample_country_dim --deleteOnSuccess"},
+      "ResultPath": "$.NextStepNameAndCmd",
+      "Next": "Dim Archive"
+    },
+    "Dim Archive": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_cmd_run_step_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Dim Archive"
+    },
+    "Wait Dim Archive": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "OutputPath": "$",
+      "Next": "Get Dim Archive Status"
+    },
+    "Get Dim Archive Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_step_emr:data_pipeline",
+      "Next": "Dim Archived?",
+      "OutputPath": "$"
+    },
+    "Dim Archived?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "ERROR",
+          "Next": "Dim Archive Failed Message"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "SUCCESS",
+          "Next": "Dimension Process Success"
+        }
+      ],
+      "Default": "Wait Dim Archive"
+    },
+    "Dim Archive Failed Message": {
+      "Type": "Pass",
+      "Result":  "Dim Archive Failed! describe_step returned FAILED|CANCELLED",
+      "ResultPath": "$.Message",
+      "Next": "Send Process Dimension Fail Message"
+    },
+    "Send Process Dimension Fail Message": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_send_msg_sns:data_pipeline",
+      "OutputPath": "$",
+      "Next": "ARN Terminate EMR Cluster Steps"
+    },
+    "ARN Terminate EMR Cluster Steps": {
+      "Type": "Pass",
+      "OutputPath": "$",
+      "Result": "arn:aws:states:<aws_region>:<aws_accountid>:stateMachine:data_pipeline_v2.0_Terminate_EMR_Cluster",
+      "ResultPath": "$.nextStateMachineArn",
+      "Next": "Terminate EMR Cluster Steps"
+    },
+    "Terminate EMR Cluster Steps": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_submit_stepfunction:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Process Dimension Failed"
+    },
+    "Process Dimension Failed": {
+      "Type": "Fail",
+      "Cause": "Process Dimension Failed",
+      "Error": "One of the step  in Process Dimension state machine failed"
+    },
+    "Dimension Process Success": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

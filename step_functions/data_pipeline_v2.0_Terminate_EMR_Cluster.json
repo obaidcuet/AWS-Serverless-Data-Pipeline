@@ -1,0 +1,72 @@
+{
+  "Comment": "State Machine to Terminate an existing EMR cluster",
+  "StartAt": "Get EMR ClusterId",
+  "States": {
+    "Get EMR ClusterId": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_read_state_info_from_s3:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Terminate EMR"
+    },
+    "Terminate EMR": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_terminate_emr:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Wait Terminate EMR"
+    },
+    "Wait Terminate EMR": {
+      "Type": "Wait",
+      "Seconds": 120,
+      "OutputPath": "$",
+      "Next": "Get Terminate EMR Status"
+    },
+    "Get Terminate EMR Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_status_emr:data_pipeline",
+      "Next": "EMR Terminated?",
+      "OutputPath": "$"
+    },
+    "EMR Terminated?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Status",
+          "StringEquals": "STARTED",
+          "Next": "Terminate EMR Failed Message"
+        },
+        {
+          "Variable": "$.Status",
+          "StringEquals": "STOPPED",
+          "Next": "Remove ClusterId from S3"
+        }
+      ]
+    },
+    "Terminate EMR Failed Message": {
+      "Type": "Pass",
+      "Result":  "Terminate EMR Cluster Steps Failed!",
+      "ResultPath": "$.Message",
+      "Next": "Send Terminate EMR Fail Message"
+    },
+    "Send Terminate EMR Fail Message": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_send_msg_sns:data_pipeline",
+      "OutputPath": "$",
+      "Next": "Terminate EMR Failed"
+    },
+    "Terminate EMR Failed": {
+      "Type": "Fail",
+      "Cause": "Terminate EMR Failed",
+      "Error": "EMR is not terminating after waiting 2 minutes"
+    },
+    "Remove ClusterId from S3": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:<aws_region>:<aws_accountid>:function:lambda_remove_state_info_from_s3:data_pipeline",
+      "OutputPath": "$",
+      "Next": "EMR Terminated"   
+    },
+    "EMR Terminated": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}
