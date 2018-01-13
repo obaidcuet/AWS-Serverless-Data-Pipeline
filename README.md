@@ -7,25 +7,15 @@ This is an explample implementation on data pipeline/ETL entirely serverless. It
 Kindly follow below steps and change as per the hosting environemnt.
 
 #### AWS Services used:
-
     A. S3
-
-    B. Lambda Functions
-
-    C. Step Functions
-
-    D. CloudWatch
-
-    E. SNS
-
-    F. Athena
-
-    G. Glue
-
-    H. EMR
-    
+    B. Lambda Functions
+    C. Step Functions
+    D. CloudWatch
+    E. SNS
+    F. Athena
+    G. Glue
+    H. EMR
     I. Python (boto3)
-
 
 ### Steps for a sample implementation:
 #### 0\. configure glue as default metastore for Athena and launch all EMR pointing metastire to glue.
