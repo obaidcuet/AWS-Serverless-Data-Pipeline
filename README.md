@@ -8,7 +8,7 @@ Kindly follow below steps and change as per the hosting environemnt.
 
 #### AWS Services used:
 
-A. S3
+    A. S3
 
     B. Lambda Functions
 
@@ -23,6 +23,8 @@ A. S3
     G. Glue
 
     H. EMR
+    
+    I. Python (boto3)
 
 
 ### Steps for a sample implementation:
