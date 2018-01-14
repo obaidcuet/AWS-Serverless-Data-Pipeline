@@ -2,7 +2,7 @@
 --------------------------------------------------------------
 ### Data Pipeline, here it is not refering to AWS Data Pipeline service
 
-This is an explample implementation on data pipeline/ETL entirely serverless. It is having almost same consistency and flexibility pluse something more that traditional ETL workflows.
+This is an explample implementation on data pipeline/ETL entirely serverless. It is having almost same consistency and flexibility like traditional ETL/ELT, pluse additional benifit of beign serverless.
 
 Kindly follow below steps and change as per the hosting environemnt.
 
